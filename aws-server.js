@@ -11,8 +11,9 @@ global.fetch = require("node-fetch");
 
 var userPool = [];
 var attributeList = [];
+var cognitoUser;
 // AWS
- 
+
 var app = express();
 var urlencodedParser = bodyParser.urlencoded({ extended: false });
 
@@ -22,6 +23,10 @@ app.use(multer({ dest: '/tmp/'}).single('file'));
 
 app.get('/index.htm', function (req, res) {
   res.sendFile( __dirname + "/" + "index.htm" );
+});
+
+app.get('/login.htm', function (req, res) {
+  res.sendFile( __dirname + "/" + "login.htm" );
 });
 
 // Process the GET for filling AWS Cognito forms for admin login
@@ -41,6 +46,55 @@ app.get('/process_admin', function (req, res) {
   }
 
   res.sendFile( __dirname + "/" + "signup.htm" );
+});
+
+// Process the GET for filling AWS Cognito forms for user login
+app.get('/process_login', function (req, res) {
+  // JSON format here
+  var userData = {
+    Username : req.query.user_name,
+    Pool : userPool
+  };
+  var authenticationData = {
+    Username : req.query.user_name,
+    Password : req.query.password
+  };
+  var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
+  var currentUser = new AmazonCognitoIdentity.CognitoUser(userData);
+  currentUser.authenticateUser(authenticationDetails, {
+    onSuccess: function (result) {
+      var accessToken = result.getAccessToken().getJwtToken();
+      console.log('Access granted!');
+    },
+
+    onFailure: function (err) {
+      console.log(err);
+    },
+
+    mfaRequired: function (codeDeliveryDetails) {
+      var verificationCode = prompt('Please input verification code', '')
+      currentUser.sendMFACode(verificationCode, this);
+    }
+  });
+});
+
+// Process the GET for filling AWS Cognito forms for confirmation
+app.get('/process_confirmation', function (req, res) {
+  // JSON format here
+  var confirmationCode = {
+    Name : 'confirmation_code',
+    Value : req.query.confirmation_code
+  };
+
+  cognitoUser.confirmRegistration(confirmationCode.Value, true, function(err, result) {
+      if (err) {
+          console.log(err);
+          res.send( '<html><body><p>Confirmation code is invalid!</p></body></html>' );
+          return;
+      }
+      console.log('Call result: ' + result);
+      res.sendFile( __dirname + "/" + "login.htm" );
+  });
 });
 
 // Process the GET for filling AWS Cognito forms for sign up
@@ -66,7 +120,6 @@ app.get('/process_signup', function (req, res) {
   attributeList.push(attributeEmail);
   attributeList.push(attributePhoneNumber);
 
-  var cognitoUser;
   userPool.signUp(req.query.user_name, req.query.password, attributeList, null, function(err, result){
     if (err) {
       console.log(err);
@@ -75,9 +128,16 @@ app.get('/process_signup', function (req, res) {
     }
     cognitoUser = result.user;
     console.log('user name is ' + cognitoUser.getUsername() + ' and has been created!');
-    res.send( '<html><body><p>User name is' + cognitoUser.getUsername() + ' and has been created!</p></body></html>' );
+    res.sendFile( __dirname + "/" + "confirmation.htm" );
     });
 });
+
+var server = app.listen(8081, function () {
+  var host = server.address().address;
+  var port = server.address().port;
+
+  console.log("App listening at http://%s:%s", host, port);
+})
 
 // // Process the GET
 // app.get('/process_get', function (req, res) {
@@ -124,13 +184,6 @@ app.get('/process_signup', function (req, res) {
 //      });
 //   });
 // });
-
-var server = app.listen(8081, function () {
-  var host = server.address().address;
-  var port = server.address().port;
-
-  console.log("App listening at http://%s:%s", host, port);
-})
 
 // // Create a server
 // http.createServer( function (request, response) {

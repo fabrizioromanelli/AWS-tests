@@ -7,10 +7,13 @@ var multer = require('multer');
 
 // AWS
 var AmazonCognitoIdentity = require('amazon-cognito-identity-js');
+//var cognitoidentityserviceprovider = new AmazonCognitoIdentity.CognitoIdentityServiceProvider();
 global.fetch = require("node-fetch");
 
 var userPool = [];
 var attributeList = [];
+var accessToken = [];
+var currentUser = [];
 var cognitoUser;
 // AWS
 
@@ -27,6 +30,10 @@ app.get('/index.htm', function (req, res) {
 
 app.get('/login.htm', function (req, res) {
   res.sendFile( __dirname + "/" + "login.htm" );
+});
+
+app.get('/userspace.htm', function (req, res) {
+  res.sendFile( __dirname + "/" + "userspace.htm" );
 });
 
 // Process the GET for filling AWS Cognito forms for admin login
@@ -49,6 +56,27 @@ app.get('/process_admin', function (req, res) {
 });
 
 // Process the GET for filling AWS Cognito forms for user login
+app.get('/process_changepassword', function (req, res) {
+  currentUser.changePassword(req.query.prev_password, req.query.new_password, function(err, result) {
+    if (err) {
+      console.log (err, err.stack);
+      return;
+    }
+    console.log ('Call result ' + result);
+  });
+
+  res.sendFile( __dirname + "/" + "logout.htm" );
+});
+
+// Process the GET for AWS Cognito user logout
+app.get('/process_logout', function (req, res) {
+  if (currentUser != null) {
+    currentUser.signOut();
+    res.send( '<html><body><p>Successfully logged out!</p></body></html>' );
+  }
+});
+
+// Process the GET for filling AWS Cognito forms for user login
 app.get('/process_login', function (req, res) {
   // JSON format here
   var userData = {
@@ -60,11 +88,12 @@ app.get('/process_login', function (req, res) {
     Password : req.query.password
   };
   var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
-  var currentUser = new AmazonCognitoIdentity.CognitoUser(userData);
+  currentUser = new AmazonCognitoIdentity.CognitoUser(userData);
   currentUser.authenticateUser(authenticationDetails, {
     onSuccess: function (result) {
-      var accessToken = result.getAccessToken().getJwtToken();
+      accessToken = result.getAccessToken().getJwtToken();
       console.log('Access granted!');
+      res.sendFile( __dirname + "/" + "userspace.htm" );
     },
 
     onFailure: function (err) {
